@@ -111,6 +111,15 @@ BrowserID.Modules.ValidateRpParams = (function() {
             "experimental_allowUnverified");
       }
 
+      // emailHint allows a site to provide a hint to the persona dialog
+      // of the desired email to verify.  It allows a site who knows an
+      // email but must verify it to offer a streamlined user experience
+      if (paramsFromRP.experimental_emailHint) {
+        params.emailHint = validateEmail(
+            paramsFromRP.experimental_emailHint,
+            "experimental_emailHint");
+      }
+
       if (hash.indexOf("#AUTH_RETURN") === 0) {
         var primaryParams = storage.idpVerification.get();
         if (!primaryParams)
@@ -240,6 +249,11 @@ BrowserID.Modules.ValidateRpParams = (function() {
 
     dataMatches = inputLogoUri.match(dataUriRegex);
     if (dataMatches) {
+      if (inputLogoUri.length > (bid.MAX_SITE_LOGO_SIZE)) {
+        throw new Error("data URI for siteLogo is too large, " +
+                        "max size is: " + bid.MAX_SITE_LOGO_SIZE);
+      }
+
       if ((dataMatches[1].toLowerCase() === 'image')
            &&
           (_.indexOf(imageMimeTypes, dataMatches[2].toLowerCase()) > -1)) {
@@ -247,6 +261,7 @@ BrowserID.Modules.ValidateRpParams = (function() {
       }
       throw new Error("Bad data URI for siteLogo: " + inputLogoUri.slice(0, 15) + " ...");
     }
+
 
     // Regularize URL; throws error if input is relative.
     outputLogoUri = fixupURL(originURL, inputLogoUri);
@@ -288,6 +303,14 @@ BrowserID.Modules.ValidateRpParams = (function() {
     }
 
     return bool;
+  }
+
+  function validateEmail(email, name) {
+    if (!bid.verifyEmail(email)) {
+      throw new Error("invalid email for " + name + ": " + email);
+    }
+
+    return email;
   }
 
   return Module;

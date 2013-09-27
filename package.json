@@ -1,13 +1,22 @@
 {
   "name": "browserid",
   "version": "1.0.0-b2",
+  "author": {
+    "name": "Mozilla",
+    "url": "https://mozilla.org/"
+  },
   "private": true,
+  "description": "Persona is a secure, distributed, and easy to use identification system.",
+  "homepage": "https://login.persona.org",
   "repository": {
     "type": "git",
     "url": "https://github.com/mozilla/browserid.git"
   },
   "bugs": "https://github.com/mozilla/browserid/issues",
-  "license": "MPL 2.0",
+  "licenses" : [{
+    "type": "MPL 2.0",
+    "url": "https://mozilla.org/MPL/2.0/"
+  }],
   "dependencies": {
     "JSONSelect": "0.4.0",
     "async": "0.2.9",
@@ -44,8 +53,8 @@
     "underscore": "1.3.1",
     "urlparse": "0.0.1",
     "useragent": "2.0.7",
-    "validator": "0.4.9",
-    "winston": "0.6.2",
+    "validator": "1.5.1",
+    "winston": "0.7.2",
     "connect-fonts": "0.0.9-alpha8",
     "connect-fonts-opensans": "0.0.3-beta1",
     "connect-fonts-feurasans": "0.0.2"
@@ -54,8 +63,8 @@
     "node-statsd": "https://github.com/downloads/lloyd/node-statsd/0509f85.tgz"
   },
   "devDependencies": {
-    "vows": "0.5.13",
-    "awsbox": "0.4.5",
+    "vows": "git://github.com/cloudhead/vows#253ca34c",
+    "awsbox": "0.6.0",
     "irc": "0.3.3",
     "jshint": "0.9.1",
     "which": "1.0.5",

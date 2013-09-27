@@ -1,16 +1,52 @@
 current train:
 
-train-2013.08.15
-	* Relax restrictions on siteLogo - allow siteLogo from any https URL or image dataURI: #3705, #3743
-	* Allow CSV list of platforms when running Selenium tests: #3748
-	* Fix mobile layout of unsupported_dialog and cookies_disabled: #3783, #3784, #3785
-	* Record frontend test details in a temp file when run from Selenium tests: #3780
-	* Fix "noSuchWindow" error for new Chrome Selenium driver: #3683, #3788
-	* Fix invalid CSS: #3765, #3791
-	* Ensure include.orig.js is available on the staging and production servers: #3212, #3795
-	* Refactorings and other improvements: #3751, #3683, #3750, #3758, #3759, #3788, #3774
+train-2013.09.25:
+  * RP Branded verification emails - if a site declares siteLogo and backgroundColor, verification emails will be styled with those instead of Persona branding: #3857
+  * Fix iOS7 users being logged out on RP page refresh: #3914
+  * Fix certs being requested from the fallback IdP for addresses that are suppored by primary IdPs: #3625
+  * Always decode the returnTo URL before redirecting users: #3906
+  * Use Fira Sans as the default font for FirefoxOS: #3885
+  * Update awsbox to use Route53 and node 0.10.x by default: #3901, #3908
+  * Update vows to fix Selenium on node 0.10.x: #3900
+  * Update winston to work with node 0.10.x: #3893
+  * Update package.json with license, author, homepage and description: #3881
+  * Update Ubuntu setup instructions: #3910
+  * Code cleanup & refactoring: #3880
 
-train-2013.07.31
+train-2013.09.11:
+  * Add support for experimental_emailHint - pre-fill email input box or pre-select an email address when dialog opens: #3843
+  * Fix backgroundColor color clash with text color: #3837
+  * Add support for "one time certs" - if a user has not selected "Yes" to "Is this your computer", clear cert as soon as it is used to generate an assertion: #3840
+  * If user has no email addresses after sync, sign them out: #3820
+  * Ensure only one GET request to a URL can be in flight at a time: #3877
+  * Upgrade to qunit 1.12.0 to ensure all exceptions are caught in frontend unit tests: #3836, #3839
+  * Remove window.unload event from KPI event stream: #3864
+  * Improved logging/test reporting: #3862
+  * Add MPL2 license header missing from some files: #3875
+
+train-2013.08.28:
+  * Add redirect flow, fixing Persona on Chrome for iOS and Windows Phone: #2034
+  * Ensure ToS/PP links are legible for any backgroundColor: #3725
+  * Add Webmaker example RP, replacing Times Crossword app: #3716
+  * If an unverified user was created via an allowUnverified RP, ensure that user can sign into non-allowUnverified RPs: #3811
+  * Update mobile button styles to match FXOS style guide: #3635
+  * Add MPL2 license header missing from some files: #3715
+  * Update lockdown version: #3303
+  * Fix duplicate key in unit tests: #3808
+  * Visual tweaks: #3636, #3814, #3813, #3765
+  * Copy tweaks: #3823, #3833
+
+train-2013.08.15:
+  * Relax restrictions on siteLogo - allow siteLogo from any https URL or image dataURI: #3705, #3743
+  * Allow CSV list of platforms when running Selenium tests: #3748
+  * Fix mobile layout of unsupported_dialog and cookies_disabled: #3783, #3784, #3785
+  * Record frontend test details in a temp file when run from Selenium tests: #3780
+  * Fix "noSuchWindow" error for new Chrome Selenium driver: #3683, #3788
+  * Fix invalid CSS: #3765, #3791
+  * Ensure include.orig.js is available on the staging and production servers: #3212, #3795
+  * Refactorings and other improvements: #3751, #3683, #3750, #3758, #3759, #3788, #3774
+
+train-2013.07.31:
   * Nicely warn primary IdP users that third-party cookies must be enabled: #3520
   * Update copy and design of persona emails: #1935
   * Fix bugs in onmatch and oncancel callbacks: #3701, #3170, #3463

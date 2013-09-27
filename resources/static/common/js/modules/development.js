@@ -9,6 +9,7 @@ BrowserID.Modules.Development = (function() {
       dom = bid.DOM,
       renderer = bid.Renderer,
       storage = bid.Storage,
+      redirect = bid.Helpers.redirect,
       user = bid.User,
       clickCount = 0;
 
@@ -28,6 +29,7 @@ BrowserID.Modules.Development = (function() {
         this.click("#hideAll,footer,#errorBackground", hideScreens);
         this.click("#clearLocalStorage", clearLocalStorage);
         this.click("#clearEmailsForSites", clearEmailsForSites);
+        this.click("#clearCerts", clearCerts);
         this.click("#forceIsThisYourComputer", forceIsThisYourComputer);
         this.click("#redirectTo", redirectTo);
         this.click("#closeDevelopment", close);
@@ -93,6 +95,13 @@ BrowserID.Modules.Development = (function() {
     localStorage.removeItem("siteInfo");
   }
 
+  function clearCerts() {
+    var records = storage.getEmails("default");
+    for (var email in records) {
+      storage.invalidateEmail(email, "default");
+    }
+  }
+
   function forceIsThisYourComputer() {
     storage.usersComputer.forceAsk(user.userid());
   }
@@ -102,7 +111,7 @@ BrowserID.Modules.Development = (function() {
 
     if (href) {
       bid.module.stopAll();
-      document.location = href;
+      redirect(document, href);
     }
   }
 

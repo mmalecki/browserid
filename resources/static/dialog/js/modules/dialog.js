@@ -10,6 +10,7 @@ BrowserID.Modules.Dialog = (function() {
       user = bid.User,
       errors = bid.Errors,
       storage = bid.Storage,
+      redirect = bid.Helpers.redirect,
       sc;
 
   function startActions(onsuccess, onerror) {
@@ -156,12 +157,7 @@ BrowserID.Modules.Dialog = (function() {
      * address bar.
      */
     storage.rpRequest.clear();
-    win.location = returnTo;
-  }
-
-  function onWindowUnload() {
-    /*jshint validthis: true*/
-    this.publish("window_unload");
+    redirect(win, returnTo);
   }
 
   function publishKpis(rpAPI) {
@@ -280,13 +276,14 @@ BrowserID.Modules.Dialog = (function() {
         user.setReturnTo(params.returnTo);
 
 
-      // XXX Perhaps put this into the state machine.
-      self.bind(self.window, "unload", onWindowUnload);
-
       self.publish("channel_established");
 
       // no matter what, we clear the primary flow state for this window
       storage.idpVerification.clear();
+
+      params.origin = user.getOrigin();
+      var rpInfo = bid.Models.RpInfo.create(params);
+      user.setRpInfo(rpInfo);
 
       function start() {
         self.publish("start", params);
@@ -308,12 +305,6 @@ BrowserID.Modules.Dialog = (function() {
         start();
       }
     }
-
-    // BEGIN TESTING API
-    ,
-    onWindowUnload: onWindowUnload
-    // END TESTING API
-
   });
 
   sc = Dialog.sc;

@@ -26,7 +26,8 @@ BrowserID.User = (function() {
       userid,
       auth_status,
       issuer = "default",
-      allowUnverified = false;
+      allowUnverified = false,
+      PERSONA_ORG_AUDIENCE = "https://login.persona.org";
 
   var TRANSITION_STATES = [
     "transition_to_secondary",
@@ -38,66 +39,60 @@ BrowserID.User = (function() {
     return (_.indexOf(TRANSITION_STATES, state) > -1);
   }
 
-  // remove identities that are no longer valid
-  function cleanupIdentities(onSuccess, onFailure) {
+  // Determine if a certificate is expired.  That will be
+  // if it was issued *before* the domain key was last updated or
+  // if the certificate expires in less that 5 minutes from now.
+  function isCertExpired(serverTime, creationTime, cert) {
+    // if it expires in less than 2 minutes, it's too old to use.
+    var diff = cert.payload.exp.valueOf() - serverTime.valueOf();
+    if (diff < (60 * 2 * 1000)) {
+      return true;
+    }
+
+    // or if it was issued before the last time the domain key
+    // was updated, it's invalid
+    if (!cert.payload.iat) {
+      helpers.log('Data Format ERROR: expected cert to have iat ' +
+        'property, but found none, marking expired');
+      return true;
+    } else if (cert.payload.iat < creationTime) {
+      helpers.log('Certificate issued ' + cert.payload.iat +
+        ' is before creation time ' + creationTime + ', marking expired');
+      return true;
+    }
+
+    return false;
+  }
+
+  /*
+   * Throws if the email record is invalid.
+   * Record is invalid if:
+   * 1) cannot load pubkey
+   * 2) cannot load cert
+   * 3) cannot extract cert
+   * 4) cert is expired.
+   */
+  function checkRecordValidity(jwcrypto, record, serverTime, creationTime) {
+    jwcrypto.loadPublicKeyFromObject(record.pub);
+
+    if (!record.cert)
+      throw new Error("missing cert");
+
+    var cert = jwcrypto.extractComponents(record.cert);
+    if (isCertExpired(serverTime, creationTime, cert))
+      throw new Error("expired cert");
+  }
+
+  function removeInvalidIdentities(onSuccess, onFailure) {
     network.serverTime(function(serverTime) {
       network.domainKeyCreationTime(function(creationTime) {
-        // Determine if a certificate is expired.  That will be
-        // if it was issued *before* the domain key was last updated or
-        // if the certificate expires in less that 5 minutes from now.
-        function isExpired(cert) {
-          // if it expires in less than 2 minutes, it's too old to use.
-          var diff = cert.payload.exp.valueOf() - serverTime.valueOf();
-          if (diff < (60 * 2 * 1000)) {
-            return true;
-          }
-
-          // or if it was issued before the last time the domain key
-          // was updated, it's invalid
-          if (!cert.payload.iat) {
-            helpers.log('Data Format ERROR: expected cert to have iat ' +
-              'property, but found none, marking expired');
-            return true;
-          } else if (cert.payload.iat < creationTime) {
-            helpers.log('Certificate issued ' + cert.payload.iat +
-              ' is before creation time ' + creationTime + ', marking expired');
-            return true;
-          }
-
-          return false;
-        }
-
-        var emails = storage.getEmails(issuer);
-        var issued_identities = {};
         cryptoLoader.load(function(jwcrypto) {
-          _.each(emails, function(email_obj, email_address) {
+          var emails = storage.getEmails(issuer);
+          _.each(emails, function(record, address) {
             try {
-              email_obj.pub = jwcrypto.loadPublicKeyFromObject(email_obj.pub);
+              checkRecordValidity(jwcrypto, record, serverTime, creationTime);
             } catch (x) {
-              storage.invalidateEmail(email_address, issuer);
-              return;
-            }
-
-            // no cert? reset
-            if (!email_obj.cert) {
-              storage.invalidateEmail(email_address, issuer);
-            } else {
-              try {
-                // parse the cert
-                var cert = jwcrypto.extractComponents(
-                                emails[email_address].cert);
-
-                // check if this certificate is still valid.
-                if (isExpired(cert)) {
-                  storage.invalidateEmail(email_address, issuer);
-                }
-
-              } catch (e) {
-                // error parsing the certificate!  Maybe it's of an
-                // old/different format?  just delete it.
-                helpers.log("error parsing cert for"+ email_address +":" + e);
-                storage.invalidateEmail(email_address, issuer);
-              }
+              return storage.invalidateEmail(address, issuer);
             }
           });
           onSuccess();
@@ -433,6 +428,14 @@ BrowserID.User = (function() {
     },
 
     /**
+     * Set the RP info
+     * @method setRpInfo
+     */
+    setRpInfo: function(rpInfo) {
+      User.rpInfo = rpInfo;
+    },
+
+    /**
      * Set the interface to use for networking.  Used for unit testing.
      * @method setNetwork
      * @param {BrowserID.Network} networkInterface - BrowserID.Network
@@ -531,8 +534,7 @@ BrowserID.User = (function() {
      */
     createSecondaryUser: function(email, password, onComplete, onFailure) {
       stageAddressVerification(email, password,
-        network.createUser.bind(network, email, password,
-            origin, allowUnverified), function(status) {
+        network.createUser.bind(network, email, password, User.rpInfo), function(status) {
               // If creating an unverified account, the user will not go
               // through the verification flow while the dialog is open and the
               // cache will not be updated accordingly. Update the cache now.
@@ -603,7 +605,7 @@ BrowserID.User = (function() {
           persistEmailKeypair(email, authInfo.keypair, authInfo.cert,
             function() {
               // We are getting an assertion for persona.org.
-              User.getAssertion(email, "https://login.persona.org", function(assertion) {
+              User.getAssertion(email, PERSONA_ORG_AUDIENCE, function(assertion) {
                 if (assertion) {
                   onComplete("primary.verified", {
                     assertion: assertion
@@ -690,21 +692,6 @@ BrowserID.User = (function() {
           }
         }
       );
-    },
-
-    /**
-     * Get the IdP authentication status for a user.
-     * @method isUserAuthenticatedToPrimary
-     * @param {string} email
-     * @param {object} info - provisioning info
-     * @param {function} [onComplete] - called when complete.  Called with
-     *   status field - true if user authenticated with IdP, false otw.
-     * @param {function} [onFailure] - called on failure
-     */
-    isUserAuthenticatedToPrimary: function(email, info, onComplete, onFailure) {
-      User.primaryUserAuthenticationInfo(email, info, function(authInfo) {
-        onComplete(authInfo.authenticated);
-      }, onFailure);
     },
 
     /**
@@ -796,6 +783,7 @@ BrowserID.User = (function() {
      * @param {function} [onFailure] - Called on XHR failure.
      */
     requestPasswordReset: function(email, onComplete, onFailure) {
+      var rpInfo = User.rpInfo;
       User.addressInfo(email, function(info) {
         // user is not known.  Can't request a password reset.
         if (info.state === "unknown") {
@@ -807,7 +795,7 @@ BrowserID.User = (function() {
         }
         else {
           stageAddressVerification(email, null,
-            network.requestPasswordReset.bind(network, email, origin),
+            network.requestPasswordReset.bind(network, email, rpInfo),
             onComplete, onFailure);
         }
       }, onFailure);
@@ -855,7 +843,7 @@ BrowserID.User = (function() {
       else {
         // try to reverify this address.
         stageAddressVerification(email, null,
-          network.requestEmailReverify.bind(network, email, origin),
+          network.requestEmailReverify.bind(network, email, User.rpInfo),
           onComplete, onFailure);
       }
     },
@@ -892,6 +880,7 @@ BrowserID.User = (function() {
      * @param {function} [onFailure] - Called on XHR failure.
      */
     requestTransitionToSecondary: function(email, password, onComplete, onFailure) {
+      var rpInfo = User.rpInfo;
       User.addressInfo(email, function(info) {
         // user is not known.  Can't request a transition to secondary.
         if (info.state === "unknown") {
@@ -903,7 +892,7 @@ BrowserID.User = (function() {
         }
         else {
           stageAddressVerification(email, password,
-            network.requestTransitionToSecondary.bind(network, email, password, origin),
+            network.requestTransitionToSecondary.bind(network, email, password, rpInfo),
             onComplete, onFailure);
         }
       }, onFailure);
@@ -986,7 +975,7 @@ BrowserID.User = (function() {
      * @param {function} [onFailure] - Called on error.
      */
     syncEmails: function(onComplete, onFailure) {
-      cleanupIdentities(function () {
+      removeInvalidIdentities(function () {
         var issued_identities = User.getStoredEmailKeypairs();
 
         network.listEmails(function(server_emails) {
@@ -1070,7 +1059,16 @@ BrowserID.User = (function() {
       User.checkAuthentication(function(authenticated) {
         if (authenticated) {
           User.syncEmails(function() {
-            complete(onComplete, authenticated);
+            // no emails means they must have been removed from this
+            // account. at any rate, the user can't do anything without
+            // any emails, so log them out.
+            if (storage.getEmailCount() === 0) {
+              User.logoutUser(function() {
+                complete(onComplete, false);
+              }, onFailure);
+            } else {
+              complete(onComplete, authenticated);
+            }
           }, onFailure);
         }
         else {
@@ -1135,8 +1133,6 @@ BrowserID.User = (function() {
      *     type: <secondary|primary>
      *     known: boolean, present if type is secondary.  True if email
      *        address is registered with BrowserID.
-     *     authed: boolean, present if type is primary - whether the user
-     *        is authenticated to the IdP as this user.
      *     auth: string - url to send users for auth - present if type is
      *        primary.
      *     prov: string - url to embed for silent provisioning - present
@@ -1163,14 +1159,8 @@ BrowserID.User = (function() {
         info.email = normalizedEmail;
         User.checkForInvalidCerts(normalizedEmail, info, function(cleanedInfo) {
           if (cleanedInfo.type === "primary") {
-            withContext(function() {
-              User.isUserAuthenticatedToPrimary(normalizedEmail, cleanedInfo,
-                  function(authed) {
-                cleanedInfo.authed = authed;
-                cleanedInfo.idpName = _.escape(getIdPName(cleanedInfo));
-                complete(cleanedInfo);
-              }, onFailure);
-            }, onFailure);
+            cleanedInfo.idpName = _.escape(getIdPName(cleanedInfo));
+            complete(cleanedInfo);
           }
           else {
             complete(cleanedInfo);
@@ -1250,7 +1240,8 @@ BrowserID.User = (function() {
      */
     addEmail: function(email, password, onComplete, onFailure) {
       stageAddressVerification(email, password,
-        network.addSecondaryEmail.bind(network, email, password, origin), onComplete, onFailure);
+        network.addSecondaryEmail.bind(network, email, password, User.rpInfo),
+          onComplete, onFailure);
     },
 
     /**
@@ -1373,6 +1364,19 @@ BrowserID.User = (function() {
                   // issuer is used for B2G to get silent assertions to get
                   // assertions backed by certs from a special issuer.
                   storage.site.set(audience, "issuer", issuer);
+
+                  /**
+                   * If a user who signs with a primary address is not authenticated to Persona,
+                   * an assertion is first generated with the audience login.persona.org to sign the user
+                   * into Persona, another assertion is generated to sign the user into the RP. The cert should
+                   * be removed after generating the assertion for the RP.
+                   */
+                  if (audience !== PERSONA_ORG_AUDIENCE && !storage.usersComputer.confirmed(email)) {
+                    // If the user has not confirmed that this is their
+                    // computer, immediately invalidate the cert so that nobody
+                    // else can sign in using this address.
+                    storage.invalidateEmail(email);
+                  }
                   complete(onComplete, assertion);
                 });
             }, 0);
@@ -1389,11 +1393,11 @@ BrowserID.User = (function() {
           }, 0);
         }
         else {
-          if (storedID.type === "primary" && User.isDefaultIssuer()) {
-            // first we have to get the address info, then attempt
-            // a provision, then if the user is provisioned, go and get an
-            // assertion.
-            User.addressInfo(email, function(info) {
+          User.addressInfo(email, function(info) {
+            if (info.type === "primary" && User.isDefaultIssuer()) {
+              // first we have to get the address info, then attempt
+              // a provision, then if the user is provisioned, go and get an
+              // assertion.
               User.provisionPrimaryUser(email, info, function(status) {
                 if (status === "primary.verified") {
                   User.getAssertion(email, audience, onComplete, onFailure);
@@ -1402,15 +1406,15 @@ BrowserID.User = (function() {
                   complete(onComplete, null);
                 }
               }, onFailure);
-            }, onFailure);
-          }
-          else {
-            // we have no key for this identity, go generate the key,
-            // sync it and then get the assertion recursively.
-            User.syncEmailKeypair(email, function(status) {
-              User.getAssertion(email, audience, onComplete, onFailure);
-            }, onFailure);
-          }
+            }
+            else {
+              // we have no key for this identity, go generate the key,
+              // sync it and then get the assertion recursively.
+              User.syncEmailKeypair(email, function(status) {
+                User.getAssertion(email, audience, onComplete, onFailure);
+              }, onFailure);
+            }
+          }, onFailure);
         }
       }
       else {

@@ -404,7 +404,6 @@
         testObjectValuesEqual(info, {
           type: "primary",
           email: normalizedEmail,
-          authed: true,
           idpName: "testuser.com"
         });
         start();
@@ -422,13 +421,22 @@
         testObjectValuesEqual(info, {
           type: "primary",
           email: normalizedEmail,
-          authed: false,
           idpName: "testuser.com"
         });
         start();
       },
       testHelpers.unexpectedFailure
     );
+  }
+
+  function testCertClearedAfterAssertionGeneration(email) {
+    lib.syncEmailKeypair(email, function() {
+      lib.getAssertion(email, "https://testorigin.com", function onSuccess(assertion) {
+        var record = storage.getEmail(email);
+        testHelpers.testUndefined(record.cert);
+        start();
+      }, testHelpers.unexpectedXHRFailure);
+    }, testHelpers.unexpectedXHRFailure);
   }
 
 
@@ -614,39 +622,6 @@
     lib.primaryUserAuthenticationInfo(
       TEST_EMAIL,
       {},
-      testHelpers.unexpectedSuccess,
-      testHelpers.expectedXHRFailure
-    );
-  });
-
-  asyncTest("isUserAuthenticatedToPrimary with authed user, expect true status", function() {
-    provisioning.setStatus(provisioning.AUTHENTICATED);
-
-    lib.isUserAuthenticatedToPrimary(TEST_EMAIL, {},
-      function(status) {
-        equal(status, true, "user is authenticated, correct status");
-        start();
-      },
-      testHelpers.unexpectedXHRFailure
-    );
-  });
-
-  asyncTest("isUserAuthenticatedToPrimary with non-authed user, expect false status", function() {
-    provisioning.setStatus(provisioning.NOT_AUTHENTICATED);
-
-    lib.isUserAuthenticatedToPrimary(TEST_EMAIL, {},
-      function(status) {
-        equal(status, false, "user is not authenticated, correct status");
-        start();
-      },
-      testHelpers.unexpectedXHRFailure
-    );
-  });
-
-  asyncTest("isUserAuthenticatedToPrimary with failure", function() {
-    provisioning.setFailure("failure");
-
-    lib.isUserAuthenticatedToPrimary(TEST_EMAIL, {},
       testHelpers.unexpectedSuccess,
       testHelpers.expectedXHRFailure
     );
@@ -843,6 +818,17 @@
     xhr.setContextInfo("auth_level", "assertion");
 
     failureCheck(lib.checkAuthenticationAndSync);
+  });
+
+  asyncTest("checkAuthenticationAndSync with no emails", function() {
+    xhr.setContextInfo("auth_level", "assertion");
+    xhr.useResult("no_identities");
+    storage.clear();
+
+    lib.checkAuthenticationAndSync(function(authed) {
+      equal(authed, false, "we are not authenticated");
+      start();
+    }, testHelpers.unexpectedXHRFailure);
   });
 
   asyncTest("isEmailRegistered with registered email", function() {
@@ -1053,7 +1039,7 @@
 
 
   asyncTest("getAssertion with known secondary email that does not have a key", function() {
-    storage.addEmail(TEST_EMAIL, { type: "secondary" });
+    storage.addEmail(TEST_EMAIL, { });
     lib.getAssertion(TEST_EMAIL, lib.getOrigin(), function onSuccess(assertion) {
       testAssertion(assertion, start);
       equal(storage.site.get(testOrigin, "email"), TEST_EMAIL, "email address was persisted");
@@ -1064,14 +1050,14 @@
   asyncTest("getAssertion with known primary email, expired cert, user authenticated with IdP - expect assertion", function() {
     xhr.useResult("primary");
     provisioning.setStatus(provisioning.AUTHENTICATED);
-    storage.addEmail("unregistered@testuser.com", { type: "primary" });
+    storage.addEmail("registered@testuser.com", {});
 
     lib.getAssertion(
-      "unregistered@testuser.com",
+      "registered@testuser.com",
       lib.getOrigin(),
       function(assertion) {
         testAssertion(assertion, start);
-        equal(storage.site.get(testOrigin, "email"), "unregistered@testuser.com", "email address was persisted");
+        equal(storage.site.get(testOrigin, "email"), "registered@testuser.com", "email address was persisted");
       },
       testHelpers.unexpectedXHRFailure);
   });
@@ -1079,7 +1065,7 @@
   asyncTest("getAssertion with known primary email, expired cert, user not authenticated with IdP - expect null assertion", function() {
     xhr.useResult("primary");
     provisioning.setStatus(provisioning.NOT_AUTHENTICATED);
-    storage.addEmail("registered@testuser.com", { type: "primary" });
+    storage.addEmail("registered@testuser.com", { });
 
     lib.getAssertion(
       "registered@testuser.com",
@@ -1105,6 +1091,34 @@
     storage.addEmail(TEST_EMAIL, {});
     failureCheck(lib.getAssertion, TEST_EMAIL, lib.getOrigin());
   });
+
+  asyncTest("getAssertion with confirmed session - cert is retained after getAssertion", function() {
+    storage.updateEmailToUserIDMapping(1, [TEST_EMAIL]);
+    storage.usersComputer.setConfirmed(TEST_EMAIL);
+    lib.syncEmailKeypair(TEST_EMAIL, function() {
+      lib.getAssertion(TEST_EMAIL, "https://testorigin.com", function onSuccess(assertion) {
+        var record = storage.getEmail(TEST_EMAIL);
+        testHelpers.testNotUndefined(record.cert);
+        start();
+      }, testHelpers.unexpectedXHRFailure);
+    }, testHelpers.unexpectedXHRFailure);
+  });
+
+
+  asyncTest("getAssertion with unconfirmed computer status - cert is removed after getAssertion", function() {
+    storage.updateEmailToUserIDMapping(1, [TEST_EMAIL]);
+    storage.usersComputer.clear(TEST_EMAIL);
+    testCertClearedAfterAssertionGeneration(TEST_EMAIL);
+  });
+
+  asyncTest("getAssertion with denied computer status - cert is removed after getAssertion", function() {
+    storage.updateEmailToUserIDMapping(1, [TEST_EMAIL]);
+    storage.usersComputer.setDenied(TEST_EMAIL);
+    testCertClearedAfterAssertionGeneration(TEST_EMAIL);
+  });
+
+
+
 
   asyncTest("getSilentAssertion with logged out user, " +
     "null email and assertion",
